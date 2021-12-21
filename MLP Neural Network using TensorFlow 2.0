@@ -1,0 +1,53 @@
+MLP Nueral Network implementation using TensorFlow 2.0 Keras Sequential. The network has 1 hidden layer with 100 units. 
+Tested for the MNIST dataset downloaded from TensorFlow datasets. The training accuracy is 97.66% and validation accuracy is 96.87%.
+
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from tensorflow.keras.datasets import mnist
+import matplotlib.pyplot as plt
+
+(X_train, Y_train), (X_test, Y_test) = mnist.load_data()
+
+X_train_NN = X_train.reshape(X_train.shape[0],28*28)
+X_test_NN = X_test.reshape(X_test.shape[0],28*28)
+
+X_train_NN_std = (X_train_NN/255. - .5)*2.
+X_test_NN_std = (X_test_NN/255. - .5)*2.
+
+onehot_encoder = OneHotEncoder(sparse=False)
+Y_train_NN = onehot_encoder.fit_transform(Y_train.reshape(-1,1))
+Y_test_NN = onehot_encoder.transform(Y_test.reshape(-1,1))
+
+tf.random.set_seed(1) 
+model = tf.keras.Sequential()
+model.add(tf.keras.layers.Dense(units=100, input_shape = (784,), activation='sigmoid'))
+model.add(tf.keras.layers.Dense(units=10, activation='sigmoid'))
+print(model.summary())
+
+model.compile(optimizer=tf.keras.optimizers.SGD(),
+              loss='sparse_categorical_crossentropy',
+              metrics=['accuracy'])
+
+hist = model.fit(X_train_NN_std,Y_train,validation_data=(X_test_NN_std,Y_test),epochs=200,batch_size=100,verbose=1)
+history = hist.history
+
+plt.figure()
+plt.plot(history['loss'],label='loss')
+plt.plot(history['val_loss'],label='val_loss')
+plt.xlabel('epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+y_pred = np.argmax(model.predict(X_test_NN_std),axis=1)
+check = X_test_NN_std[y_pred != Y_test]
+corr_label = Y_test[y_pred != Y_test]
+pred_label = y_pred[y_pred != Y_test]
+print('missclassified in test set: %d' %check.shape[0])
+
+y_pred_train = np.argmax(model.predict(X_train_NN_std),axis=1)
+check_train = X_train_NN_std[y_pred_train != Y_train]
+print('missclassified in train set: %d' %check_train.shape[0])
