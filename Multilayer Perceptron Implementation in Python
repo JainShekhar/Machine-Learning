@@ -1,0 +1,182 @@
+This is an example of my Multilayer Perceptron (MLP) Neural Network implementation. The network has two hidden layers and uses l2 regularization. Test run for MNIST dataset from Tensorflow.
+The accuracy after 200 epochs is 97.47% for training set and 95.46% for the validation set.
+
+import sys
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder
+from tensorflow.keras.datasets import mnist
+import matplotlib.pyplot as plt
+
+#define ANN with 1 input layer, 2 hidden layers, and 1 output layer
+#note number of units in both hidden layers are same 
+class ANN(object):
+#INITIALIZE
+    #initialize
+    def __init__(self,n_hidden=10,l2=0,epochs=100,eta=0.01,shuffle=True,batch_size=1,seed=1):
+        #no of units in hidden layers, default is 10
+        self.n_hidden = n_hidden
+        #l2 regularization parameter, default is 0
+        self.l2 = l2
+        #number of epochs, default is 100
+        self.epochs = epochs
+        #learning parameter eta, default is 0.01
+        self.eta = eta
+        #shuffle for batch gradient descent, default is True
+        self.shuffle = True
+        #Batch size for batch gradient descent, default is 1
+        self.batch_size = batch_size
+        #seed for random numbers, default is 1
+        self.seed = seed
+ #ONEHOTENCODER  
+    #onehotencoder for output variables: assumes classes start from 0, 1, 2, and so on
+    def _onehotencoder(self,y,n_classes):
+        y_enc = np.zeros((y.shape[0],n_classes))
+        for idx, val in enumerate(y.astype(int)):
+            y_enc[idx,val] = 1
+        return y_enc
+#ACTIVATION FUNCTION    
+    #activation function, sigmoid in this case
+    def _activation(self,z):
+        return 1./(1. + np.exp(-np.clip(z,-250,250)))
+#DERIVATIVE OF ACTIVATION FUNCTION    
+    #derivative of activation function
+    def _derivactivation(self,a):
+        return a*(1. - a)
+#COST FUNCTION    
+    #cost function with regularization; y_enc is the truth while output is the prediction
+    def _computecost(self,y_enc,output):
+        # log likelihood
+        term1 = np.sum(-y_enc*np.log(output) - (1. - y_enc)*np.log(1. - output))
+        term2 = self.l2/2.*(np.sum(self.w_h1**2.) + np.sum(self.w_h2**2.) + np.sum(self.w_out**2))
+        return term1 + term2
+#FEED FORWARD    
+    #forward propagation
+    def _feedforward(self,x):
+        #first hidden layer
+        z_h1 = np.dot(x,self.w_h1) + self.b_h1
+        a_h1 = self._activation(z_h1)
+        
+        #second hidden layer
+        z_h2 = np.dot(a_h1,self.w_h2) + self.b_h2
+        a_h2 = self._activation(z_h2)
+        
+        #output later
+        z_out = np.dot(a_h2,self.w_out) + self.b_out
+        a_out = self._activation(z_out)
+        
+        return z_h1, a_h1, z_h2, a_h2, z_out, a_out
+#PREDICT AFTER FEED FORWARD    
+    #predict function, note this returns as normal output and not onehotencoded
+    def predict(self,x):
+        z_h1, a_h1, z_h2, a_h2, z_out, a_out = self._feedforward(x)
+        y_pred = np.argmax(z_out,axis=1)
+        return y_pred
+#TRAIN/FIT WEIGHTS WITH BACKPROPAGATION    
+    #fit function to train weights on training data
+    def fit(self,x_train,y_train,x_valid,y_valid):
+        #no of classes
+        n_classes = np.unique(y_train).shape[0]
+        #no of features
+        n_features = x_train.shape[1]
+        
+        #initialize weights
+        np.random.seed(self.seed)
+        self.b_h1 = np.zeros(self.n_hidden)
+        self.w_h1 = np.random.normal(loc=0.0,scale=0.1,size=(n_features,self.n_hidden))
+        
+        self.b_h2 = np.zeros(self.n_hidden)
+        self.w_h2 = np.random.normal(loc=0.0,scale=0.2,size=(self.n_hidden,self.n_hidden))
+        
+        self.b_out = np.zeros(n_classes)
+        self.w_out = np.random.normal(loc=0.0,scale=0.1,size=(self.n_hidden,n_classes))
+        
+        #for printing
+        epoch_strlen = len(str(self.epochs))
+        
+        self.eval_ = {'cost': [], 'train_acc': [], 'valid_acc': []}
+        
+        #onehotencoding for y_train
+        y_train_enc = self._onehotencoder(y_train, n_classes)
+        
+        for i in range(self.epochs):
+            
+            indices = np.arange(x_train.shape[0])
+            
+            if self.shuffle:
+                np.random.shuffle(indices)
+            
+            #batch gradient descent
+            for start_idx in range(0, indices.shape[0] - self.batch_size + 1, self.batch_size):
+                
+                batch_idx = indices[start_idx:start_idx + self.batch_size]
+                
+                z_h1, a_h1, z_h2, a_h2, z_out, a_out = self._feedforward(x_train[batch_idx])
+                
+                #Backpropagation
+                delta_out = a_out - y_train_enc[batch_idx]
+                delta_h2 = np.dot(delta_out, self.w_out.T)*self._derivactivation(a_h2)
+                delta_h1 = np.dot(delta_h2, self.w_h2.T)*self._derivactivation(a_h1)
+                
+                grad_w_out = np.dot(a_h2.T, delta_out)
+                grad_b_out = np.sum(delta_out, axis = 0)
+                
+                grad_w_h2 = np.dot(a_h1.T, delta_h2)
+                grad_b_h2 = np.sum(delta_h2, axis = 0)
+                
+                grad_w_h1 = np.dot(x_train[batch_idx].T, delta_h1)
+                grad_b_h1 = np.sum(delta_h1, axis = 0)
+                
+                delta_w_out = grad_w_out + self.l2*self.w_out
+                delta_b_out = grad_b_out
+
+                delta_w_h2 = grad_w_h2 + self.l2*self.w_h2
+                delta_b_h2 = grad_b_h2
+                
+                delta_w_h1 = grad_w_h1 + self.l2*self.w_h1
+                delta_b_h1 = grad_b_h1
+                
+                self.w_out -= self.eta*delta_w_out
+                self.b_out -= self.eta*delta_b_out
+        
+                self.w_h2 -= self.eta*delta_w_h2
+                self.b_h2 -= self.eta*delta_b_h2
+                
+                self.w_h1 -= self.eta*delta_w_h1
+                self.b_h1 -= self.eta*delta_b_h1
+                
+            
+            #evaluation
+            z_h1, a_h1, z_h2, a_h2, z_out, a_out = self._feedforward(x_train)
+            cost = self._computecost(y_train_enc, a_out)
+            
+            y_train_predict = self.predict(x_train)
+            y_valid_predict = self.predict(x_valid)
+            
+            acc_train = (np.sum(y_train == y_train_predict).astype(float))/x_train.shape[0]
+            acc_valid = (np.sum(y_valid == y_valid_predict).astype(float))/x_valid.shape[0]
+            
+            sys.stderr.write('\r%0*d/%d | Cost: %.2f ''| Train/Valid Acc.: %.2f%%/%.2f%% '%(epoch_strlen,i+1,self.epochs,cost,acc_train*100,acc_valid*100))
+            sys.stderr.flush()
+            
+            self.eval_['cost'].append(cost)
+            self.eval_['train_acc'].append(acc_train)
+            self.eval_['valid_acc'].append(acc_valid)
+            
+        return self
+#FINISH TRAIN/FIT WEIGHTS WITH BACK PROPAGATION
+
+#TEST WITH MNIST DATASET
+(X_train, Y_train), (X_test, Y_test) = mnist.load_data()
+
+X_train_NN = X_train.reshape(X_train.shape[0],28*28)
+X_test_NN = X_test.reshape(X_test.shape[0],28*28)
+
+X_train_NN_std = (X_train_NN/255. - .5)*2.
+X_test_NN_std = (X_test_NN/255. - .5)*2.
+
+nn = ANN(n_hidden=100,l2=0.1,epochs=200,eta=0.0005,batch_size=100,shuffle=True,seed=1)
+
+nn.fit(X_train_NN_std,Y_train,X_test_NN,Y_test)
